@@ -3,3 +3,4 @@ contractions
 spaCy
 emoji
 NLTK
+gensim
