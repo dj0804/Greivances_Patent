@@ -299,7 +299,7 @@ hostel-patent/
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/your-org/hostel-patent.git
+git clone https://github.com/dj0804/Greivances_Patent.git
 cd hostel-patent
 ```
 
