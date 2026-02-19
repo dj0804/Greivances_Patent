@@ -15,3 +15,4 @@ pydantic
 fastapi
 uvicorn[standard]
 python-multipart
+sentence_transformers
