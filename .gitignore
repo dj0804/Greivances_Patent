@@ -44,6 +44,7 @@ data/external/
 outputs/models/*.h5
 outputs/models/*.pkl
 outputs/models/*.bin
+Src/Models/
 
 # Logs
 outputs/logs/
