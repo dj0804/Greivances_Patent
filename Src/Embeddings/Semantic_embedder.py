@@ -84,3 +84,8 @@ class FastTextEncoder:
                 embedding_matrix[i] = self.model.wv.get_vector(word)
                 
         return embedding_matrix
+
+    class Semantic:
+        def __init__():
+            pass
+        
