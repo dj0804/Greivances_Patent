@@ -9,28 +9,66 @@ Usage:
 
 import argparse
 from pathlib import Path
+import sys
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-from src.models import CNNModel, BiLSTMModel, CNNBiLSTMModel
-from src.training import ModelTrainer
-from src.config import MODEL_CONFIG, TRAINING_CONFIG, MODELS_DIR, LOGS_DIR
-from src.utils import setup_logger, load_json
+# Add project root to path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from Src.Models import CNNModel, BiLSTMModel, CNNBiLSTMModel
+from Src.Training import ModelTrainer
+from Src.config import MODEL_CONFIG, TRAINING_CONFIG, PREPROCESSING_CONFIG, MODELS_DIR, LOGS_DIR
+from Src.utils import setup_logger, load_json
 
 
-def load_data(data_dir: Path):
+import json
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.utils import to_categorical
+import pickle
+
+def load_data(data_path: Path):
     """Load and prepare training data."""
-    # Placeholder - implement actual data loading
-    # This should load your preprocessed sequences and labels
     logger = setup_logger("train_model")
-    logger.info(f"Loading data from {data_dir}")
+    logger.info(f"Loading data from {data_path}")
     
-    # TODO: Implement actual data loading
-    # For now, return dummy data
-    X = np.random.randint(0, 10000, (1000, 100))
-    y = np.random.randint(0, 3, (1000, 3))  # One-hot encoded
+    with open(data_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        
+    texts = []
+    labels = []
     
-    return X, y
+    # We only have 3 classes in MODEL_CONFIG["num_classes"] = 3
+    # Our data has: Low, Medium, High, Critical
+    # So we map Critical -> High for now to fit the 3-class schema
+    # Or, we can map Low -> 0, Medium -> 1, High/Critical -> 2
+    label_map = {
+        "Low": 0,
+        "Medium": 1,
+        "High": 2,
+        "Critical": 2
+    }
+    
+    for item in data:
+        texts.append(item["text"])
+        labels.append(label_map[item["label"]])
+        
+    logger.info(f"Loaded {len(texts)} samples")
+    
+    # Tokenization
+    tokenizer = Tokenizer(num_words=PREPROCESSING_CONFIG["max_vocab_size"], oov_token="<OOV>")
+    tokenizer.fit_on_texts(texts)
+    
+    sequences = tokenizer.texts_to_sequences(texts)
+    
+    # Padding
+    X = pad_sequences(sequences, maxlen=MODEL_CONFIG["max_sequence_length"], padding='post', truncating='post')
+    
+    # One-hot encode labels
+    y = to_categorical(labels, num_classes=MODEL_CONFIG["num_classes"])
+    
+    return X, y, tokenizer
 
 
 def main():
@@ -53,7 +91,21 @@ def main():
     logger = setup_logger("train_model", LOGS_DIR / "training.log")
     
     # Load data
-    X, y = load_data(Path(args.data))
+    data_file = Path(args.data)
+    if data_file.is_dir():
+        # Fallback if a directory was passed instead of file
+        data_file = data_file / "mock_training_data.json"
+        
+    X, y, tokenizer = load_data(data_file)
+    
+    # Save the fitted tokenizer so it can be used during inference
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tokenizer_path = output_dir / "tokenizer.pkl"
+    with open(tokenizer_path, 'wb') as f:
+        pickle.dump(tokenizer, f)
+    logger.info(f"Fitted vocabulary size: {len(tokenizer.word_index)} words")
+    logger.info(f"Saved tokenizer to {tokenizer_path}")
     
     # Split data
     X_train, X_val, y_train, y_val = train_test_split(
@@ -75,7 +127,7 @@ def main():
         model_class = CNNBiLSTMModel
     
     model = model_class(
-        vocab_size=MODEL_CONFIG["max_vocab_size"],
+        vocab_size=PREPROCESSING_CONFIG["max_vocab_size"],
         embedding_dim=MODEL_CONFIG["embedding_dim"],
         max_length=MODEL_CONFIG["max_sequence_length"],
         num_classes=MODEL_CONFIG["num_classes"]
