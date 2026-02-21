@@ -5,6 +5,7 @@ Semantic embedding using FastText pretrained models.
 import numpy as np
 from gensim.models import fasttext
 from typing import List, Dict
+from sentence_transformers import SentenceTransformer
 
 
 class FastTextEncoder:
@@ -84,3 +85,23 @@ class FastTextEncoder:
                 embedding_matrix[i] = self.model.wv.get_vector(word)
                 
         return embedding_matrix
+
+class Semantic:
+    def __init__(self):
+            self.model = SentenceTransformer('../Models/sbert_local_model')
+
+    def encode(self, sentences: List[str]) -> np.ndarray:
+        """
+        Encode sentences into semantic vectors using SBERT.
+        
+        Args:
+            sentences: List of sentences to encode
+            
+        Returns:
+            Array of semantic embedding vectors
+        """
+        return self.model.encode(sentences)
+        
+Se=Semantic()
+li=(Se.encode(["This is a test sentence.", "Another example sentence."]))
+print(li.shape)
