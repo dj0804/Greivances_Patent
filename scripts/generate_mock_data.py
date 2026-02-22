@@ -201,5 +201,5 @@ def generate_complaints(num_samples=2000):
 
 if __name__ == "__main__":
     print("Initializing state-of-the-art mock grievance generator...")
-    generate_complaints(2000)
+    generate_complaints(10000)
     print("Done!")
