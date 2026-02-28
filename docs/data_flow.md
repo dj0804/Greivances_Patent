@@ -268,6 +268,7 @@ Sentence Embedding: [0.234, -0.456, 0.789, ..., 0.123]  # 384-dim vector
 ```
 
 **Vector Store Structure** (FAISS + PostgreSQL `vector_id` integration):
+**Vector Store Structure** (FAISS + PostgreSQL `vector_id` integration):
 ```python
 {
   "index": faiss.IndexFlatIP(...),           # FAISS Index (Outer .faiss object)
