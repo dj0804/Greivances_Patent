@@ -16,10 +16,10 @@ from sklearn.model_selection import train_test_split
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from Src.Models import CNNModel, BiLSTMModel, CNNBiLSTMModel
-from Src.Training import ModelTrainer
-from Src.config import MODEL_CONFIG, TRAINING_CONFIG, PREPROCESSING_CONFIG, MODELS_DIR, LOGS_DIR
-from Src.utils import setup_logger, load_json
+from src.models import CNNModel, BiLSTMModel, CNNBiLSTMModel
+from src.training import ModelTrainer
+from src.config import MODEL_CONFIG, TRAINING_CONFIG, PREPROCESSING_CONFIG, MODELS_DIR, LOGS_DIR
+from src.utils import setup_logger, load_json
 
 
 import json

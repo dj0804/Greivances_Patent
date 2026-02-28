@@ -13,8 +13,8 @@ import numpy as np
 import json
 from tqdm import tqdm
 
-from src.embeddings import FastTextEncoder, VectorStore
-from src.utils import setup_logger, save_json, load_json
+from Src.Embeddings import FastTextEncoder, VectorStore
+from Src.utils import setup_logger, save_json, load_json
 
 
 def main():

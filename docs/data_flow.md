@@ -266,15 +266,15 @@ Text: "The AC in room 305 is broken and it's hot, cannot sleep"
 Sentence Embedding: [0.234, -0.456, 0.789, ..., 0.123]  # 384-dim vector
 ```
 
-**Vector Store Structure** (`data/processed/embeddings/vector_store.pkl`):
+**Vector Store Structure** (FAISS + PostgreSQL `vector_id` integration):
 ```python
 {
-  "vectors": np.array([[...], [...], ...]),  # (N, 384) matrix
-  "ids": ["C_001", "C_002", ...],
+  "index": faiss.IndexIDMap(...),            # FAISS Index (Outer .faiss object)
   "metadata": [
     {"urgency": "High", "cluster_id": 7, "timestamp": "..."},
     ...
-  ]
+  ],
+  "string_ids": {1: "C_001", 2: "C_002"}     # FAISS int-to-complaint string map
 }
 ```
 
