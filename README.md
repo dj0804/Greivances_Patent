@@ -179,7 +179,7 @@ Default Weights:
 | **Sentence Embeddings** | Sentence-BERT / Universal Sentence Encoder |
 | **NLP Processing** | spaCy, NLTK, emoji, contractions |
 | **Clustering** | HDBSCAN (density-based) |
-| **Vector Database** | Custom implementation (extensible to FAISS/Pinecone) |
+| **Vector Database** | FAISS |
 | **API Framework** | FastAPI + Uvicorn |
 | **Data Processing** | NumPy, Pandas, scikit-learn |
 | **Serialization** | Pickle, JSON |

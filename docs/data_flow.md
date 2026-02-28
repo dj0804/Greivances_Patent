@@ -26,7 +26,8 @@ data/
 │   │   ├── fasttext_sequences.npy      # For CNN-BiLSTM
 │   │   ├── sentence_embeddings.npy     # For semantic search
 │   │   ├── embedding_matrix.npy        # Pretrained weights
-│   │   └── vector_store.pkl            # Vector database
+│   │   ├── latest.faiss                # FAISS Vector Index
+│   │   └── latest.pkl                  # Vector Metadata map
 │   └── temporal_json/            # Temporal feature encodings
 │       ├── temporal_features.json
 │       └── frequency_patterns.json
@@ -269,12 +270,9 @@ Sentence Embedding: [0.234, -0.456, 0.789, ..., 0.123]  # 384-dim vector
 **Vector Store Structure** (FAISS + PostgreSQL `vector_id` integration):
 ```python
 {
-  "index": faiss.IndexIDMap(...),            # FAISS Index (Outer .faiss object)
-  "metadata": [
-    {"urgency": "High", "cluster_id": 7, "timestamp": "..."},
-    ...
-  ],
-  "string_ids": {1: "C_001", 2: "C_002"}     # FAISS int-to-complaint string map
+  "index": faiss.IndexFlatIP(...),           # FAISS Index (Outer .faiss object)
+  "metadata": [{"hostel_id": "H1", ...}],    # FAISS int-to-complaint metadata map
+  "ids": ["C_001", "C_002"]                  # FAISS int-to-complaint string map
 }
 ```
 
@@ -344,7 +342,7 @@ epoch,loss,accuracy,val_loss,val_accuracy
            "cluster_id": None  # Populated later
        }
    )
-4. Save vector store to disk
+4. Automatically back up FAISS index and metadata to disk
 ```
 
 **Clustering with HDBSCAN**:
@@ -633,7 +631,7 @@ sentence_vector = [0.189, 0.115, ...]
 **Formats**:
 - JSON: Individual complaint embeddings
 - NumPy (.npy): Batch arrays for training
-- Vector Store (.pkl): Similarity search index
+- Vector Store (.faiss/.pkl): FAISS Similarity search index and metadata
 
 ### Stage 4: Sequence Preparation
 

@@ -447,7 +447,7 @@ Speedup: 1.53x
 | Word Embeddings | FastText (300-dim) |
 | Sentence Embeddings | Sentence-BERT / Universal Sentence Encoder |
 | Clustering | HDBSCAN |
-| Vector Database | Custom implementation (scalable to FAISS/Pinecone) |
+| Vector Database | FAISS implementation (with autosave functionality) |
 | NLP Processing | spaCy, NLTK |
 | API Framework | FastAPI |
 | Task Orchestration | Python asyncio |
@@ -458,7 +458,7 @@ Speedup: 1.53x
 
 **Current Capacity**: ~10,000 complaints/day
 **Scaling Path**:
-- Vector DB → FAISS GPU for million-scale similarity search
+- Vector DB → Pinecone or FAISS GPU for million-scale similarity search
 - CNN-BiLSTM → TensorFlow Serving for batch inference
 - Decision Engine → Redis cache for temporal frequency lookups
 - Clustering → Incremental HDBSCAN for real-time cluster updates
