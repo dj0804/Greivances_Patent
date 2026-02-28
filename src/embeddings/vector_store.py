@@ -6,6 +6,8 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 import pickle
 from pathlib import Path
+import faiss
+import os
 
 
 class VectorStore:
@@ -14,17 +16,25 @@ class VectorStore:
     Can be extended to use FAISS, Pinecone, or other vector databases.
     """
     
-    def __init__(self, dimension: int):
+    def __init__(self, dimension: int, autosave_dir: Optional[str] = None):
         """
         Initialize vector store.
         
         Args:
             dimension: Dimensionality of vectors
+            autosave_dir: Directory to automatically save indices
         """
         self.dimension = dimension
-        self.vectors = []
+        
+        # We use Cosine Similarity, so we normalize vectors and use Inner Product
+        self.index = faiss.IndexFlatIP(dimension)
+        
         self.metadata = []
         self.ids = []
+        
+        self.autosave_dir = autosave_dir
+        if self.autosave_dir:
+            os.makedirs(self.autosave_dir, exist_ok=True)
     
     def add(
         self,
@@ -46,9 +56,19 @@ class VectorStore:
                 f"doesn't match store dimension {self.dimension}"
             )
         
-        self.vectors.append(vector)
+        # FAISS expects 2D array for addition
+        vector_2d = np.array([vector], dtype=np.float32)
+        
+        # Normalize for cosine similarity
+        faiss.normalize_L2(vector_2d)
+        
+        self.index.add(vector_2d)
+        
         self.ids.append(id)
         self.metadata.append(metadata or {})
+        
+        if self.autosave_dir:
+            self.save(Path(self.autosave_dir) / "latest")
     
     def search(
         self,
@@ -65,48 +85,52 @@ class VectorStore:
         Returns:
             List of (id, similarity_score, metadata) tuples
         """
-        if not self.vectors:
+        if self.index.ntotal == 0:
             return []
         
-        vectors_array = np.array(self.vectors)
+        # FAISS expects 2D array
+        query_2d = np.array([query_vector], dtype=np.float32)
         
-        # Cosine similarity
-        query_norm = query_vector / np.linalg.norm(query_vector)
-        vectors_norm = vectors_array / np.linalg.norm(
-            vectors_array, axis=1, keepdims=True
-        )
+        # Normalize for cosine similarity
+        faiss.normalize_L2(query_2d)
         
-        similarities = np.dot(vectors_norm, query_norm)
+        # Search
+        similarities, indices = self.index.search(query_2d, top_k)
         
-        # Get top-k indices
-        top_indices = np.argsort(similarities)[-top_k:][::-1]
-        
-        results = [
-            (self.ids[i], similarities[i], self.metadata[i])
-            for i in top_indices
-        ]
+        results = []
+        for j, i in enumerate(indices[0]):
+            if i != -1: # -1 means not enough results were found
+                results.append((self.ids[i], float(similarities[0][j]), self.metadata[i]))
         
         return results
     
     def save(self, path: Path) -> None:
         """Save vector store to disk."""
+        # Save FAISS index
+        faiss.write_index(self.index, f"{path}.faiss")
+        
+        # Save metadata and IDs
         data = {
             "dimension": self.dimension,
-            "vectors": self.vectors,
             "ids": self.ids,
             "metadata": self.metadata,
         }
-        with open(path, "wb") as f:
+        with open(f"{path}.pkl", "wb") as f:
             pickle.dump(data, f)
     
     @classmethod
-    def load(cls, path: Path) -> "VectorStore":
+    def load(cls, path: Path, autosave_dir: Optional[str] = None) -> "VectorStore":
         """Load vector store from disk."""
-        with open(path, "rb") as f:
+        store = cls(0, autosave_dir=autosave_dir) # temporary dimension, will be overwritten
+        
+        # Load FAISS index
+        store.index = faiss.read_index(f"{path}.faiss")
+        store.dimension = store.index.d
+        
+        # Load metadata and IDs
+        with open(f"{path}.pkl", "rb") as f:
             data = pickle.load(f)
         
-        store = cls(data["dimension"])
-        store.vectors = data["vectors"]
         store.ids = data["ids"]
         store.metadata = data["metadata"]
         
