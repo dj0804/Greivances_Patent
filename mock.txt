@@ -1,1 +1,0 @@
-This is a mock file to trigger a git commit and calibrate changes.
