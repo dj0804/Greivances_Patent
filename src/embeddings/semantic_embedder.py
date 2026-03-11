@@ -88,7 +88,7 @@ class FastTextEncoder:
 
 class Semantic:
     def __init__(self):
-            self.model = SentenceTransformer('../Models/sbert_local_model')
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
 
     def encode(self, sentences: List[str]) -> np.ndarray:
         """
