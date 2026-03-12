@@ -1,42 +1,57 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts"
 import { AlertTriangle, Clock, Activity, ArrowLeft, RefreshCw, Filter, ShieldAlert } from "lucide-react"
-
-// Mock Data
-const mockComplaints = [
-    { id: "C-1002", text: "Water cooler in Block C not working securely.", summary: "Water cooler malfunctioning in Block C.", urgency: "High", score: 0.89, cluster: 12, time: "2h ago", slaBreach: false },
-    { id: "C-1003", text: "AC is noisy tonight.", summary: "AC noise issue.", urgency: "Low", score: 0.12, cluster: 8, time: "4h ago", slaBreach: false },
-    { id: "C-1004", text: "Electricity outage in entire floor.", summary: "Power cut in block A, floor 3.", urgency: "High", score: 0.95, cluster: 2, time: "25h ago", slaBreach: true },
-    { id: "C-1005", text: "Room cleaning not done today.", summary: "Missed room cleaning.", urgency: "Medium", score: 0.55, cluster: 4, time: "5h ago", slaBreach: false },
-    { id: "C-1006", text: "Door lock jammed, locked out.", summary: "Student locked out due to jammed door.", urgency: "High", score: 0.90, cluster: 9, time: "1h ago", slaBreach: false },
-]
-
-const trendData = [
-    { name: 'Mon', high: 4, medium: 7, low: 12 },
-    { name: 'Tue', high: 8, medium: 5, low: 15 },
-    { name: 'Wed', high: 3, medium: 9, low: 10 },
-    { name: 'Thu', high: 15, medium: 8, low: 18 },
-    { name: 'Fri', high: 6, medium: 12, low: 14 },
-]
-
-const clusterData = [
-    { name: 'HVAC', count: 24 },
-    { name: 'Plumbing', count: 18 },
-    { name: 'Security', count: 12 },
-    { name: 'Cleaning', count: 30 },
-]
+import { DashboardComplaint, getDashboardData } from "@/lib/api"
 
 export default function AdminDashboard() {
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [filter, setFilter] = useState("all")
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+    const [stats, setStats] = useState({
+        total_active: 0,
+        critical_urgency: 0,
+        active_clusters: 0,
+        sla_overdue: 0,
+    })
+    const [trendData, setTrendData] = useState<Array<{ name: string; high: number; medium: number; low: number }>>([])
+    const [clusterData, setClusterData] = useState<Array<{ name: string; count: number }>>([])
+    const [complaints, setComplaints] = useState<DashboardComplaint[]>([])
 
-    const handleRefresh = () => {
-        setIsRefreshing(true)
-        setTimeout(() => setIsRefreshing(false), 800)
+    const loadDashboard = async () => {
+        setError(null)
+        try {
+            const data = await getDashboardData()
+            setStats(data.stats)
+            setTrendData(data.trend)
+            setClusterData(data.clusters)
+            setComplaints(data.recent_complaints)
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to load dashboard data"
+            setError(message)
+        } finally {
+            setIsLoading(false)
+        }
     }
+
+    useEffect(() => {
+        loadDashboard()
+    }, [])
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        await loadDashboard()
+        setIsRefreshing(false)
+    }
+
+    const filteredComplaints = useMemo(
+        () => complaints.filter(c => filter === 'all' || (filter === 'high' && c.urgency === 'High') || (filter === 'breaches' && c.slaBreach)),
+        [complaints, filter]
+    )
 
     const getUrgencyBadge = (level: string) => {
         const l = level?.toLowerCase() || ""
@@ -50,10 +65,10 @@ export default function AdminDashboard() {
         <div className="container mx-auto p-4 md:p-8 max-w-7xl">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                 <div>
-                    <a href="/" className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-400 mb-2 transition-colors">
+                    <Link href="/" className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-400 mb-2 transition-colors">
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Back to Home
-                    </a>
+                    </Link>
                     <h1 className="text-3xl font-extrabold tracking-tight text-slate-50">Intelligence Operations</h1>
                     <p className="text-slate-400 mt-1">Real-time system monitoring, clustering models, and SLA metrics.</p>
                 </div>
@@ -88,7 +103,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Total Active</p>
-                                <h3 className="text-3xl font-extrabold text-slate-100">142</h3>
+                                <h3 className="text-3xl font-extrabold text-slate-100">{stats.total_active}</h3>
                             </div>
                             <Activity className="w-10 h-10 text-slate-700 group-hover:scale-110 transition-transform duration-300 group-hover:text-slate-500" />
                         </div>
@@ -101,7 +116,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-bold text-rose-400 uppercase tracking-wider mb-1">Critical Urgency</p>
-                                <h3 className="text-3xl font-extrabold text-slate-100">12</h3>
+                                <h3 className="text-3xl font-extrabold text-slate-100">{stats.critical_urgency}</h3>
                             </div>
                             <ShieldAlert className="w-10 h-10 text-rose-900/50 group-hover:scale-110 transition-transform duration-300 group-hover:text-rose-500" />
                         </div>
@@ -114,7 +129,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Active Clusters</p>
-                                <h3 className="text-3xl font-extrabold text-slate-100">4</h3>
+                                <h3 className="text-3xl font-extrabold text-slate-100">{stats.active_clusters}</h3>
                             </div>
                             <LayoutDashboard className="w-10 h-10 text-indigo-900/50 group-hover:scale-110 transition-transform duration-300 group-hover:text-indigo-500" />
                         </div>
@@ -127,7 +142,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">SLA Overdue</p>
-                                <h3 className="text-3xl font-extrabold text-slate-100">2</h3>
+                                <h3 className="text-3xl font-extrabold text-slate-100">{stats.sla_overdue}</h3>
                             </div>
                             <Clock className="w-10 h-10 text-amber-900/50 group-hover:scale-110 transition-transform duration-300 group-hover:text-amber-500" />
                         </div>
@@ -198,6 +213,11 @@ export default function AdminDashboard() {
                     <CardDescription className="text-slate-400">Real-time data from prediction pipeline</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
+                    {error && (
+                        <div className="px-6 py-4 text-sm text-rose-300 bg-rose-500/10 border-b border-rose-500/20">
+                            {error}
+                        </div>
+                    )}
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left border-collapse">
                             <thead className="text-xs text-slate-400 bg-slate-950/80 uppercase font-semibold">
@@ -211,7 +231,7 @@ export default function AdminDashboard() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-800">
-                                {mockComplaints.filter(c => filter === 'all' || (filter === 'high' && c.urgency === 'High') || (filter === 'breaches' && c.slaBreach)).map((c) => (
+                                {filteredComplaints.map((c) => (
                                     <tr key={c.id} className={`hover:bg-slate-800/50 transition-colors ${c.urgency === 'High' ? 'bg-rose-900/10' : ''}`}>
                                         <td className="px-6 py-5 font-bold text-slate-200 whitespace-nowrap">
                                             {c.id}
@@ -241,7 +261,17 @@ export default function AdminDashboard() {
                                         </td>
                                     </tr>
                                 ))}
-                                {mockComplaints.filter(c => filter === 'all' || (filter === 'high' && c.urgency === 'High') || (filter === 'breaches' && c.slaBreach)).length === 0 && (
+                                {isLoading && (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-16 text-center text-slate-500">
+                                            <div className="flex flex-col items-center justify-center">
+                                                <RefreshCw className="w-8 h-8 text-slate-700 mb-2 animate-spin" />
+                                                <p className="font-medium text-slate-500">Loading dashboard data...</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                                {!isLoading && filteredComplaints.length === 0 && (
                                     <tr>
                                         <td colSpan={6} className="px-6 py-16 text-center text-slate-500">
                                             <div className="flex flex-col items-center justify-center">

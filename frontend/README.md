@@ -16,6 +16,30 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Backend Connection
+
+The UI talks only to frontend API routes (`/api/predict`, `/api/dashboard`).
+Those frontend routes proxy to FastAPI using `BACKEND_API_BASE_URL`.
+
+1. Create `frontend/.env.local`:
+
+```bash
+BACKEND_API_BASE_URL=http://localhost:8000
+```
+
+2. Start backend from `backend/`:
+
+```bash
+cd ../backend
+fastapi dev --app api.main:app --host 0.0.0.0 --port 8000
+```
+
+3. Start frontend from `frontend/`:
+
+```bash
+npm run dev
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

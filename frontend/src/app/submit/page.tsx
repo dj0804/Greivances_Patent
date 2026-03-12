@@ -1,16 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import axios from "axios"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { AlertCircle, FileText, CheckCircle2, Clock, CheckIcon, Loader2, ArrowLeft, Send, Activity } from "lucide-react"
+import { AlertCircle, FileText, CheckCircle2, Clock, Loader2, ArrowLeft, Send, Activity } from "lucide-react"
+import { predictComplaint, PredictionResult } from "@/lib/api"
 
 export default function SubmitComplaint() {
     const [complaintText, setComplaintText] = useState("")
     const [department, setDepartment] = useState("")
     const [location, setLocation] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [result, setResult] = useState<any>(null)
+    const [result, setResult] = useState<PredictionResult | null>(null)
     const [error, setError] = useState<string | null>(null)
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -25,20 +26,21 @@ export default function SubmitComplaint() {
         setError(null)
 
         try {
-            const response = await axios.post("http://localhost:8000/api/v1/predict", {
+            const response = await predictComplaint({
                 complaint_text: complaintText,
                 complaint_type: department || "general",
                 hostel_id: location || "unknown",
                 timestamp: new Date().toISOString()
             })
 
-            if (response.data?.success && response.data?.data) {
-                setResult(response.data.data)
+            if (response?.success && response?.data) {
+                setResult(response.data)
             } else {
                 setError("Invalid response format from server.")
             }
-        } catch (err: any) {
-            setError(err.message || "Failed to submit complaint. Is the API backend running?")
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Failed to submit complaint. Is the API backend running?"
+            setError(message)
         } finally {
             setIsLoading(false)
         }
@@ -63,10 +65,10 @@ export default function SubmitComplaint() {
     return (
         <div className="container mx-auto max-w-5xl py-12 px-4">
             <div className="mb-10">
-                <a href="/" className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-400 mb-6 transition-colors">
+                <Link href="/" className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-indigo-400 mb-6 transition-colors">
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     Back to Overview
-                </a>
+                </Link>
                 <h1 className="text-4xl font-extrabold tracking-tight text-slate-50">Log a Grievance</h1>
                 <p className="text-lg text-slate-400 mt-2 max-w-2xl">
                     Describe your issue in detail. Our neural network will analyze the semantics and temporal context to route it instantly.
