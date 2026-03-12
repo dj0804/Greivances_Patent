@@ -186,7 +186,7 @@ Default Weights:
 | **NLP Processing** | spaCy, NLTK, emoji, contractions |
 | **Clustering** | HDBSCAN (density-based) |
 | **Vector Database** | FAISS |
-| **API Framework** | FastAPI + Uvicorn |
+| **API Framework** | FastAPI |
 | **Data Processing** | NumPy, Pandas, scikit-learn |
 | **Serialization** | Pickle, JSON |
 
@@ -337,7 +337,7 @@ pip install -r requirements.txt
 - `tensorflow>=2.10.0`
 - `spacy`, `nltk`, `gensim`, `fasttext`
 - `scikit-learn`, `hdbscan`
-- `fastapi`, `uvicorn`, `pydantic`
+- `fastapi`, `pydantic`
 - `numpy`, `pandas`, `tqdm`
 
 ### Step 4: Download External Models
@@ -373,6 +373,31 @@ python -c "import tensorflow as tf; import spacy; print('TensorFlow:', tf.__vers
 ---
 
 ## Quick Start
+
+### Run backend + frontend together
+
+From the repository root:
+
+```bash
+./run_dev.sh
+# or
+bash run_dev.sh
+```
+
+What it does:
+- Starts backend from `backend/` and frontend from `frontend/`
+- Avoids port collisions by auto-selecting the next free ports (defaults: backend `8000`, frontend `3000`)
+- Connects frontend to backend through frontend API routes using `BACKEND_API_BASE_URL`
+- Uses `backend/venv/bin/python` automatically when available
+- Ensures FastAPI CLI support is available (`fastapi[standard]`)
+- Auto-installs frontend deps if `frontend/node_modules` is missing
+- Auto-installs backend deps from `backend/Requirements.txt` if required imports are missing
+
+Optional overrides:
+
+```bash
+BACKEND_PORT=8100 FRONTEND_PORT=3100 ./run_dev.sh
+```
 
 ### 1. Prepare Training Data
 
@@ -467,7 +492,7 @@ python scripts/run_inference.py \
 
 ```bash
 cd api
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+fastapi dev --app api.main:app --host 0.0.0.0 --port 8000
 ```
 
 **API accessible at**: `http://localhost:8000`
@@ -695,7 +720,7 @@ python api/main.py
 or
 
 ```bash
-uvicorn api.main:app --reload
+fastapi dev --app api.main:app
 ```
 
 Visit `http://localhost:8000/docs` for interactive API documentation.

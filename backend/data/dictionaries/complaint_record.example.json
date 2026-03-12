@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0.0",
+  "model_version": "cnn_bilstm_v2.1",
+  "complaint_id": "C_20260217_001",
+  "timestamp": "2026-02-17T08:30:45Z",
+  "raw_text": "Water heater broken in room 204, no hot water since morning!!!",
+  "preprocessing": {
+    "cleaned_text": "[multiple exclamations] water heater broken in room 204 no hot water since morning",
+    "tokens": ["water", "heater", "broken", "room", "204", "hot", "water", "morning"],
+    "temporal_features": {
+      "hour": 8,
+      "day_of_week": 1,
+      "is_peak_hour": true,
+      "is_weekend": false,
+      "is_night": false,
+      "month": 2,
+      "day_of_month": 17,
+      "complaint_frequency_last_24h": 3,
+      "complaint_frequency_last_week": 15
+    },
+    "context": {
+      "hostel_id": "H-101",
+      "complaint_type": "maintenance"
+    }
+  },
+  "model_prediction": {
+    "urgency_score": 0.72,
+    "predicted_class": "High",
+    "class_probabilities": {
+      "Low": 0.08,
+      "Medium": 0.2,
+      "High": 0.72
+    }
+  },
+  "semantic_analysis": {
+    "embedding_id": "emb_C_20260217_001",
+    "similar_complaints": [
+      { "id": "C_20260215_089", "similarity": 0.89 },
+      { "id": "C_20260216_034", "similarity": 0.85 }
+    ],
+    "semantic_similarity_score": 0.75,
+    "cluster_id": 7,
+    "cluster_density": 0.68,
+    "is_outlier": false
+  },
+  "historical_analysis": {
+    "avg_resolution_time_similar": 2.3,
+    "sla_target_hours": 2.0,
+    "historical_urgency_calibration": 0.6
+  },
+  "decision_inputs": {
+    "U_model": 0.72,
+    "D_cluster": 0.68,
+    "T_temporal": 0.5,
+    "H_history": 0.6,
+    "S_semantic": 0.75,
+    "weights": {
+      "alpha": 0.4,
+      "beta": 0.25,
+      "gamma": 0.15,
+      "delta": 0.1,
+      "epsilon": 0.1
+    }
+  },
+  "final_decision": {
+    "priority_score": 0.668,
+    "urgency_level": "High",
+    "routing_recommendation": "Priority Maintenance Queue",
+    "sla_hours": 2,
+    "requires_immediate_action": false,
+    "explanation": "High priority due to strong model signal, systemic cluster density, and temporal context."
+  },
+  "summary": {
+    "distilbert_summary": "Room 204 has no hot water due to a broken heater and needs priority maintenance."
+  }
+}

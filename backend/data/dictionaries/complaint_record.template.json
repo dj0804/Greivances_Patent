@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0.0",
+  "model_version": null,
+  "complaint_id": "",
+  "timestamp": "",
+  "raw_text": "",
+  "preprocessing": {
+    "cleaned_text": "",
+    "tokens": [],
+    "temporal_features": {
+      "hour": 0,
+      "day_of_week": 0,
+      "is_peak_hour": false,
+      "is_weekend": false,
+      "is_night": false,
+      "month": 1,
+      "day_of_month": 1,
+      "complaint_frequency_last_24h": 0,
+      "complaint_frequency_last_week": 0
+    },
+    "context": {
+      "hostel_id": null,
+      "complaint_type": null
+    }
+  },
+  "model_prediction": {
+    "urgency_score": 0.0,
+    "predicted_class": "Low",
+    "class_probabilities": {
+      "Low": 0.0,
+      "Medium": 0.0,
+      "High": 0.0
+    }
+  },
+  "semantic_analysis": {
+    "embedding_id": "",
+    "similar_complaints": [],
+    "semantic_similarity_score": 0.0,
+    "cluster_id": -1,
+    "cluster_density": 0.0,
+    "is_outlier": true
+  },
+  "historical_analysis": {
+    "avg_resolution_time_similar": 0.0,
+    "sla_target_hours": 0.0,
+    "historical_urgency_calibration": 0.0
+  },
+  "decision_inputs": {
+    "U_model": 0.0,
+    "D_cluster": 0.0,
+    "T_temporal": 0.0,
+    "H_history": 0.0,
+    "S_semantic": 0.0,
+    "weights": {
+      "alpha": 0.4,
+      "beta": 0.25,
+      "gamma": 0.15,
+      "delta": 0.1,
+      "epsilon": 0.1
+    }
+  },
+  "final_decision": {
+    "priority_score": 0.0,
+    "urgency_level": "Low",
+    "routing_recommendation": "",
+    "sla_hours": 0,
+    "requires_immediate_action": false,
+    "explanation": ""
+  },
+  "summary": {
+    "distilbert_summary": null
+  }
+}

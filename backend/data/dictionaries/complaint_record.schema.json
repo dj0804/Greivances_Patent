@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hostel-grievance.local/schemas/complaint_record.schema.json",
+  "title": "ComplaintRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "complaint_id",
+    "timestamp",
+    "raw_text",
+    "preprocessing",
+    "model_prediction",
+    "semantic_analysis",
+    "historical_analysis",
+    "decision_inputs",
+    "final_decision",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+    "model_version": { "type": ["string", "null"] },
+    "complaint_id": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "raw_text": { "type": "string", "minLength": 1 },
+
+    "preprocessing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cleaned_text", "tokens", "temporal_features", "context"],
+      "properties": {
+        "cleaned_text": { "type": "string" },
+        "tokens": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "temporal_features": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hour",
+            "day_of_week",
+            "is_peak_hour",
+            "is_weekend",
+            "is_night",
+            "month",
+            "day_of_month",
+            "complaint_frequency_last_24h",
+            "complaint_frequency_last_week"
+          ],
+          "properties": {
+            "hour": { "type": "integer", "minimum": 0, "maximum": 23 },
+            "day_of_week": { "type": "integer", "minimum": 0, "maximum": 6 },
+            "is_peak_hour": { "type": "boolean" },
+            "is_weekend": { "type": "boolean" },
+            "is_night": { "type": "boolean" },
+            "month": { "type": "integer", "minimum": 1, "maximum": 12 },
+            "day_of_month": { "type": "integer", "minimum": 1, "maximum": 31 },
+            "complaint_frequency_last_24h": { "type": "integer", "minimum": 0 },
+            "complaint_frequency_last_week": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hostel_id", "complaint_type"],
+          "properties": {
+            "hostel_id": { "type": ["string", "null"] },
+            "complaint_type": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+
+    "model_prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urgency_score", "predicted_class", "class_probabilities"],
+      "properties": {
+        "urgency_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "predicted_class": {
+          "type": "string",
+          "enum": ["Low", "Medium", "High", "Critical"]
+        },
+        "class_probabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["Low", "Medium", "High"],
+          "properties": {
+            "Low": { "type": "number", "minimum": 0, "maximum": 1 },
+            "Medium": { "type": "number", "minimum": 0, "maximum": 1 },
+            "High": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+
+    "semantic_analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "embedding_id",
+        "similar_complaints",
+        "semantic_similarity_score",
+        "cluster_id",
+        "cluster_density",
+        "is_outlier"
+      ],
+      "properties": {
+        "embedding_id": { "type": "string" },
+        "similar_complaints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "similarity"],
+            "properties": {
+              "id": { "type": "string" },
+              "similarity": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "semantic_similarity_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "cluster_id": { "type": "integer" },
+        "cluster_density": { "type": "number", "minimum": 0 },
+        "is_outlier": { "type": "boolean" }
+      }
+    },
+
+    "historical_analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "avg_resolution_time_similar",
+        "sla_target_hours",
+        "historical_urgency_calibration"
+      ],
+      "properties": {
+        "avg_resolution_time_similar": { "type": "number", "minimum": 0 },
+        "sla_target_hours": { "type": "number", "minimum": 0 },
+        "historical_urgency_calibration": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+
+    "decision_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["U_model", "D_cluster", "T_temporal", "H_history", "S_semantic", "weights"],
+      "properties": {
+        "U_model": { "type": "number", "minimum": 0, "maximum": 1 },
+        "D_cluster": { "type": "number", "minimum": 0 },
+        "T_temporal": { "type": "number", "minimum": 0, "maximum": 1 },
+        "H_history": { "type": "number", "minimum": 0, "maximum": 1 },
+        "S_semantic": { "type": "number", "minimum": 0, "maximum": 1 },
+        "weights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alpha", "beta", "gamma", "delta", "epsilon"],
+          "properties": {
+            "alpha": { "type": "number", "minimum": 0, "maximum": 1 },
+            "beta": { "type": "number", "minimum": 0, "maximum": 1 },
+            "gamma": { "type": "number", "minimum": 0, "maximum": 1 },
+            "delta": { "type": "number", "minimum": 0, "maximum": 1 },
+            "epsilon": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+
+    "final_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "priority_score",
+        "urgency_level",
+        "routing_recommendation",
+        "sla_hours",
+        "requires_immediate_action",
+        "explanation"
+      ],
+      "properties": {
+        "priority_score": { "type": "number", "minimum": 0 },
+        "urgency_level": {
+          "type": "string",
+          "enum": ["Low", "Medium", "High", "Critical"]
+        },
+        "routing_recommendation": { "type": "string" },
+        "sla_hours": { "type": "number", "minimum": 0 },
+        "requires_immediate_action": { "type": "boolean" },
+        "explanation": { "type": "string" }
+      }
+    },
+
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["distilbert_summary"],
+      "properties": {
+        "distilbert_summary": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
