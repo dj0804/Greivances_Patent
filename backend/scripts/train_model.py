@@ -155,10 +155,16 @@ def main():
     )
     
     # Save final model
-    output_path = Path(args.output) / f"model_{args.model_type}_final.h5"
+    # Note: API expects 'best_model.h5' - keep this name consistent
+    output_path = Path(args.output) / "best_model.h5"
     trainer.save_model(output_path)
     
+    # Also save with model type for reference
+    backup_path = Path(args.output) / f"model_{args.model_type}_final.h5"
+    trainer.save_model(backup_path)
+    
     logger.info(f"Training complete! Model saved to {output_path}")
+    logger.info(f"Backup copy saved to {backup_path}")
 
 
 if __name__ == "__main__":

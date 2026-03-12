@@ -99,9 +99,21 @@ def get_predictor():
                 detail="Model not found. Please train a model first."
             )
         
+        # Only load FastText if the file actually exists
+        fasttext_path = None
+        if FASTTEXT_MODEL_PATH:
+            ft_path = Path(FASTTEXT_MODEL_PATH)
+            if ft_path.exists():
+                fasttext_path = ft_path
+            else:
+                # FastText is optional - log a warning but continue without it
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"FastText model not found at {FASTTEXT_MODEL_PATH}. Continuing without semantic embeddings.")
+        
         predictor = GrievancePredictor(
             model_path=model_path,
-            fasttext_model_path=Path(FASTTEXT_MODEL_PATH) if FASTTEXT_MODEL_PATH else None
+            fasttext_model_path=fasttext_path
         )
     return predictor
 

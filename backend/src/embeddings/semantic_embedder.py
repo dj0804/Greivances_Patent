@@ -20,9 +20,21 @@ class FastTextEncoder:
         Args:
             model_path: Path to pretrained FastText model
         """
-        print("Loading FastText model (this may take a minute)")
-        self.model = fasttext.load_facebook_model(model_path)
-        self.vector_size = self.model.vector_size
+        from pathlib import Path
+        
+        model_file = Path(model_path)
+        if not model_file.exists():
+            raise FileNotFoundError(
+                f"FastText model not found at {model_path}. "
+                f"Download from: https://fasttext.cc/docs/en/crawl-vectors.html"
+            )
+        
+        print(f"Loading FastText model from {model_path} (this may take a minute)")
+        try:
+            self.model = fasttext.load_facebook_model(model_path)
+            self.vector_size = self.model.vector_size
+        except Exception as e:
+            raise RuntimeError(f"Failed to load FastText model: {e}")
 
     def encode_tokens(self, tokens: List[str]) -> np.ndarray:
         """
