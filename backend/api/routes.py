@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 import time
 import asyncio
+import os
+import logging
 from pathlib import Path
 from collections import Counter, deque
 from datetime import datetime, timedelta, timezone
@@ -22,15 +24,37 @@ from src.inference import GrievancePredictor
 from src.decision_engine import UrgencyDecisionEngine
 from src.config import MODELS_DIR, FASTTEXT_MODEL_PATH
 from src.summarization.summarizer import summarizer_instance
+from scripts.database_manager import HostelDB
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Initialize predictor (in production, load this once at startup)
 # This is a placeholder - update with actual model path
 predictor = None
 decision_engine = UrgencyDecisionEngine()
 recent_predictions = deque(maxlen=200)
+
+# Env toggle for safe rollout and temporary fallback mode.
+DB_PERSISTENCE_ENABLED = os.getenv("ENABLE_DB_PERSISTENCE", "true").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+db_manager = None
+
+if DB_PERSISTENCE_ENABLED:
+    try:
+        db_manager = HostelDB()
+        db_manager.initialize_tables()
+        logger.info("Database persistence initialized")
+    except Exception as exc:
+        db_manager = None
+        logger.exception(
+            "Database initialization failed; continuing without DB writes: %s",
+            exc,
+        )
+else:
+    logger.info("Database persistence disabled via ENABLE_DB_PERSISTENCE")
 
 
 def _next_complaint_id() -> str:
@@ -66,7 +90,7 @@ def _format_age(created_at: str) -> str:
     return f"{hours // 24}d ago"
 
 
-def _store_prediction(request: ComplaintRequest, result: dict):
+def _store_prediction(request: ComplaintRequest, result: dict) -> dict:
     decision_details = result.get("decision_details") or {}
     created_at = _to_iso(request.timestamp)
     score = float(result.get("confidence", 0.0))
@@ -74,7 +98,7 @@ def _store_prediction(request: ComplaintRequest, result: dict):
     sla_hours = int(decision_details.get("sla_hours", 24))
     sla_breach = (_to_datetime(created_at) + timedelta(hours=sla_hours)) < datetime.now(timezone.utc)
 
-    recent_predictions.appendleft({
+    record = {
         "id": _next_complaint_id(),
         "text": request.complaint_text,
         "summary": result.get("summary"),
@@ -84,7 +108,58 @@ def _store_prediction(request: ComplaintRequest, result: dict):
         "created_at": created_at,
         "sla_hours": sla_hours,
         "sla_breach": sla_breach,
-    })
+    }
+
+    recent_predictions.appendleft(record)
+    return record
+
+
+def _build_db_incident_payload(request: ComplaintRequest, result: dict, record: dict) -> dict:
+    decision_details = result.get("decision_details") or {}
+    return {
+        "complaint_id": record["id"],
+        "timestamp": _to_datetime(record["created_at"]),
+        "raw_text": request.complaint_text,
+        "preprocessing_data": {
+            "hostel_id": request.hostel_id,
+            "complaint_type": request.complaint_type,
+            "urgency_level": result.get("urgency_level"),
+            "confidence": float(result.get("confidence", 0.0)),
+            "summary": result.get("summary"),
+            "decision_details": decision_details,
+            "cluster_id": decision_details.get("cluster_id"),
+            "sla_hours": int(decision_details.get("sla_hours", 24)),
+            "sla_breach": bool(record.get("sla_breach")),
+        },
+    }
+
+
+def _persist_single_to_db(request: ComplaintRequest, result: dict, record: dict) -> None:
+    if not DB_PERSISTENCE_ENABLED or db_manager is None:
+        return
+
+    incident = _build_db_incident_payload(request, result, record)
+    try:
+        db_manager.insert_incident(
+            complaint_id=incident["complaint_id"],
+            timestamp=incident["timestamp"],
+            raw_text=incident["raw_text"],
+            preprocessing_data=incident["preprocessing_data"],
+        )
+        logger.info("Complaint persisted to DB")
+    except Exception as exc:
+        logger.exception("Failed to persist complaint to DB: %s", exc)
+
+
+def _persist_batch_to_db(incidents: List[dict]) -> None:
+    if not incidents or not DB_PERSISTENCE_ENABLED or db_manager is None:
+        return
+
+    try:
+        db_manager.insert_incidents_bulk(incidents)
+        logger.info("Complaint persisted to DB")
+    except Exception as exc:
+        logger.exception("Failed to persist complaint batch to DB: %s", exc)
 
 
 def get_predictor():
@@ -164,7 +239,8 @@ async def predict_urgency(request: ComplaintRequest):
         result['urgency_level'] = decision['urgency_level']
         result['confidence'] = decision['confidence']
         result['summary'] = summary
-        _store_prediction(request, result)
+        stored_record = _store_prediction(request, result)
+        _persist_single_to_db(request, result, stored_record)
         
         processing_time = (time.time() - start_time) * 1000
         
@@ -195,6 +271,7 @@ async def predict_batch(request: ComplaintBatchRequest):
         pred = get_predictor()
         
         results = []
+        batch_incidents = []
         for complaint in request.complaints:
             # Prepare tasks for parallel execution
             loop = asyncio.get_event_loop()
@@ -220,9 +297,14 @@ async def predict_batch(request: ComplaintBatchRequest):
             result['urgency_level'] = decision['urgency_level']
             result['confidence'] = decision['confidence']
             result['summary'] = summary
-            _store_prediction(complaint, result)
+            stored_record = _store_prediction(complaint, result)
+            batch_incidents.append(
+                _build_db_incident_payload(complaint, result, stored_record)
+            )
             
             results.append(UrgencyPrediction(**result))
+
+        _persist_batch_to_db(batch_incidents)
         
         processing_time = (time.time() - start_time) * 1000
         

@@ -113,3 +113,4 @@ psycopg2-binary
 sqlalchemy>=2.0.0
 python-dotenv
 faiss-cpu
+alembic==1.18.4
