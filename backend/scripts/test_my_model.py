@@ -8,10 +8,10 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from Src.config import PREPROCESSING_CONFIG, MODEL_CONFIG
+from src.config import PREPROCESSING_CONFIG, MODEL_CONFIG
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from Src.Preprocessing.clean_text import TextCleaner
+from src.Preprocessing.clean_text import TextCleaner
 
 def test_model():
     print("Loading model and tokenizer...")

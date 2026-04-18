@@ -53,6 +53,19 @@ class HostelDB:
             session.commit()
             print(f"Inserted incident with ID: {complaint_id}")
 
+    def insert_incidents_bulk(self, incidents):
+        """Bulk inserts incidents into the database with a single commit."""
+        if not incidents:
+            return
+
+        with self.get_session() as session:
+            stmt = insert(HostelIncident).values(incidents)
+            stmt = stmt.on_conflict_do_nothing(index_elements=['complaint_id'])
+
+            session.execute(stmt)
+            session.commit()
+            print(f"Inserted {len(incidents)} incidents in bulk")
+
 # Quick Test
 if __name__ == "__main__":
     db = HostelDB()
