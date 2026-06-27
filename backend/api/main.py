@@ -2,6 +2,7 @@
 FastAPI application for grievance urgency prediction.
 """
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,10 +17,16 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Add CORS middleware
+# ALLOWED_ORIGINS controls which origins may call the API.
+# Set it to a comma-separated list of origins, e.g.:
+#   ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+# Defaults to http://localhost:3000 for local development.
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins = [o.strip() for o in allowed_origins_str.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

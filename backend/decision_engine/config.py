@@ -87,21 +87,38 @@ class CalibrationConfig:
 
 
 @dataclass
+class ClusterDensityConfig:
+    """Configuration for the D(g) cluster density signal."""
+    spatial_weight: float = 0.6
+    temporal_weight: float = 0.4
+
+    def __post_init__(self):
+        total = self.spatial_weight + self.temporal_weight
+        if not (0.99 <= total <= 1.01):
+            raise ValueError(
+                f"ClusterDensityConfig weights must sum to 1.0, got {total:.4f}"
+            )
+
+
+@dataclass
 class FusionConfig:
-    """Configuration for fusing structural and temporal urgencies.
-    
-    Weights for combining structural and temporal components into
-    raw urgency score.
-    
+    """Configuration for fusing urgency signals.
+
     Mathematical form:
-        U_raw = lambda_1 * U_struct + lambda_2 * T_k
+        U_raw = lambda_1 * U_struct + lambda_2 * T_k + lambda_3 * D_g
+                + lambda_4 * S_g + lambda_5 * H_g
+
+    Extra lambdas default to 0.0 so existing deployments are unaffected.
     """
     lambda_1: float = 0.6  # Weight for structural urgency
     lambda_2: float = 0.4  # Weight for temporal urgency
-    
+    lambda_3: float = 0.0  # Weight for cluster density D(g)
+    lambda_4: float = 0.0  # Weight for semantic similarity S(g)
+    lambda_5: float = 0.0  # Weight for historical SLA calibration H(g)
+
     def __post_init__(self):
         """Validate that weights sum to 1.0."""
-        total = self.lambda_1 + self.lambda_2
+        total = self.lambda_1 + self.lambda_2 + self.lambda_3 + self.lambda_4 + self.lambda_5
         if not (0.99 <= total <= 1.01):
             raise ValueError(
                 f"Fusion weights must sum to 1.0, got {total:.4f}"
@@ -118,12 +135,13 @@ class SummarizerConfig:
 @dataclass
 class DecisionEngineConfig:
     """Master configuration for the entire Decision Engine."""
-    
+
     aggregation: AggregationConfig = field(default_factory=AggregationConfig)
     temporal: TemporalConfig = field(default_factory=TemporalConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     fusion: FusionConfig = field(default_factory=FusionConfig)
     summarizer: SummarizerConfig = field(default_factory=SummarizerConfig)
+    cluster_density: ClusterDensityConfig = field(default_factory=ClusterDensityConfig)
     
     # Logging
     log_level: str = "INFO"

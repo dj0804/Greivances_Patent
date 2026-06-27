@@ -30,6 +30,11 @@ class ClusterUrgencyBreakdown(BaseModel):
     # Cluster metadata
     complaint_count: int = Field(..., description="Number of complaints in cluster")
     previous_urgency: Optional[float] = Field(None, description="Previous urgency (for smoothing)")
+
+    # Additional fusion signals (populated when enabled in config)
+    cluster_density: Optional[float] = Field(None, description="D(g): cluster density signal")
+    semantic_similarity: Optional[float] = Field(None, description="S(g): semantic similarity to high-urgency cases")
+    historical_calibration: Optional[float] = Field(None, description="H(g): historical SLA breach rate")
     
     class Config:
         json_schema_extra = {

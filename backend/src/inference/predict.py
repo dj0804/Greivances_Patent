@@ -2,7 +2,13 @@
 End-to-end prediction pipeline for grievance urgency classification.
 """
 
+import pickle
+import logging
 from tensorflow import keras
+try:
+    from tensorflow.keras.preprocessing.text import Tokenizer as KerasTokenizer
+except ImportError:
+    KerasTokenizer = None
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, List
@@ -12,39 +18,51 @@ from ..preprocessing import TextCleaner, Tokenise
 from ..preprocessing.temporal_encoder import TemporalEncoder
 from ..embeddings import FastTextEncoder
 
+_logger = logging.getLogger(__name__)
+
 
 class GrievancePredictor:
     """
     Complete pipeline for predicting grievance urgency.
     """
-    
+
+    _warned_no_keras_tokenizer = False
+
     def __init__(
         self,
         model_path: Path,
         fasttext_model_path: Path = None,
-        max_length: int = 100
+        max_length: int = 100,
+        tokenizer_path: Path = None,
     ):
         """
         Initialize predictor.
-        
+
         Args:
             model_path: Path to trained model
             fasttext_model_path: Path to FastText model (optional)
             max_length: Maximum sequence length
+            tokenizer_path: Path to pickled Keras tokenizer (optional)
         """
         self.model = keras.models.load_model(model_path)
         self.max_length = max_length
-        
+
         # Initialize preprocessing components
         self.text_cleaner = TextCleaner()
         self.tokenizer = Tokenise()
         self.temporal_encoder = TemporalEncoder()
-        
+
+        # Load fitted Keras tokenizer if provided
+        self.keras_tokenizer = None
+        if tokenizer_path is not None and Path(tokenizer_path).exists():
+            with open(Path(tokenizer_path), 'rb') as f:
+                self.keras_tokenizer = pickle.load(f)
+
         # Initialize FastText encoder if provided
         self.fasttext_encoder = None
         if fasttext_model_path:
             self.fasttext_encoder = FastTextEncoder(str(fasttext_model_path))
-        
+
         # Urgency labels
         self.urgency_labels = ['Low', 'Medium', 'High']
     
@@ -140,14 +158,19 @@ class GrievancePredictor:
     
     def _tokens_to_sequence(self, tokens: List[str]) -> List[int]:
         """
-        Convert tokens to integer sequence.
-        
-        Note: This is a placeholder. In production, use a fitted tokenizer
-        with a vocabulary mapping.
+        Convert tokens to integer sequence using the fitted Keras tokenizer.
+        Falls back to a hash-based mapping if no tokenizer is loaded.
         """
-        # Placeholder implementation
-        # In production, use keras.preprocessing.text.Tokenizer
-        return [hash(token) % 10000 for token in tokens]
+        if self.keras_tokenizer is not None:
+            return self.keras_tokenizer.texts_to_sequences([" ".join(tokens)])[0]
+        # Fallback: hash-based mapping (imprecise — load a fitted tokenizer for accurate inference)
+        if not GrievancePredictor._warned_no_keras_tokenizer:
+            _logger.warning(
+                "No fitted Keras tokenizer loaded; using hash fallback. "
+                "Pass tokenizer_path= to GrievancePredictor for accurate predictions."
+            )
+            GrievancePredictor._warned_no_keras_tokenizer = True
+        return [abs(hash(token)) % 10000 for token in tokens]
     
     def _pad_sequence(self, sequence: List[int]) -> np.ndarray:
         """Pad or truncate sequence to max_length."""

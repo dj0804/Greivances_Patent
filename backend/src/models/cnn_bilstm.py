@@ -23,11 +23,12 @@ class CNNBiLSTMModel:
         lstm_units: int = 64,
         num_classes: int = 3,
         dropout: float = 0.5,
-        embedding_matrix: Optional[np.ndarray] = None
+        embedding_matrix: Optional[np.ndarray] = None,
+        use_attention: bool = True,
     ):
         """
         Initialize CNN-BiLSTM model.
-        
+
         Args:
             vocab_size: Size of vocabulary
             embedding_dim: Dimension of embeddings
@@ -38,6 +39,7 @@ class CNNBiLSTMModel:
             num_classes: Number of output classes
             dropout: Dropout rate
             embedding_matrix: Pretrained embeddings
+            use_attention: Whether to add a self-attention layer after BiLSTM
         """
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
@@ -48,13 +50,22 @@ class CNNBiLSTMModel:
         self.num_classes = num_classes
         self.dropout = dropout
         self.embedding_matrix = embedding_matrix
-        
+        self.use_attention = use_attention
+
         self.model = self._build_model()
     
     def _build_model(self) -> keras.Model:
-        """Build the combined CNN-BiLSTM architecture."""
+        """
+        Build the combined CNN-BiLSTM architecture.
+
+        When use_attention=True, a self-attention layer is inserted after the
+        second BiLSTM to improve both accuracy and interpretability.
+        GlobalAveragePooling1D then reduces the attended sequence to a fixed
+        vector before the Dense head. When use_attention=False, GAP is applied
+        directly to the BiLSTM sequence output.
+        """
         inputs = layers.Input(shape=(self.max_length,))
-        
+
         # Embedding layer
         if self.embedding_matrix is not None:
             x = layers.Embedding(
@@ -70,7 +81,7 @@ class CNNBiLSTMModel:
                 self.embedding_dim,
                 input_length=self.max_length
             )(inputs)
-        
+
         # CNN layer for local feature extraction
         x = layers.Conv1D(
             self.cnn_filters,
@@ -79,28 +90,37 @@ class CNNBiLSTMModel:
             padding='same'
         )(x)
         x = layers.Dropout(self.dropout)(x)
-        
-        # BiLSTM layer for sequential dependencies
+
+        # First BiLSTM layer for sequential dependencies
         x = layers.Bidirectional(
             layers.LSTM(self.lstm_units, return_sequences=True)
         )(x)
         x = layers.Dropout(self.dropout)(x)
-        
-        x = layers.Bidirectional(
-            layers.LSTM(self.lstm_units // 2)
+
+        # Second BiLSTM — always return_sequences so attention/GAP can consume it
+        bilstm_out = layers.Bidirectional(
+            layers.LSTM(self.lstm_units // 2, return_sequences=True)
         )(x)
-        x = layers.Dropout(self.dropout)(x)
-        
-        # Dense layers
+        bilstm_out = layers.Dropout(self.dropout)(bilstm_out)
+
+        if self.use_attention:
+            # Self-attention: project bilstm output to query, then attend
+            query = layers.Dense(self.lstm_units)(bilstm_out)
+            attended = layers.Attention()([query, bilstm_out])
+            x = layers.GlobalAveragePooling1D()(attended)
+        else:
+            x = layers.GlobalAveragePooling1D()(bilstm_out)
+
+        # Dense head
         x = layers.Dense(128, activation='relu')(x)
         x = layers.Dropout(self.dropout)(x)
         x = layers.Dense(64, activation='relu')(x)
         x = layers.Dropout(self.dropout)(x)
-        
+
         outputs = layers.Dense(self.num_classes, activation='softmax')(x)
-        
+
         model = keras.Model(inputs=inputs, outputs=outputs)
-        
+
         return model
     
     def compile(
@@ -122,3 +142,8 @@ class CNNBiLSTMModel:
     def get_model(self) -> keras.Model:
         """Get the Keras model."""
         return self.model
+
+
+if __name__ == "__main__":
+    model = CNNBiLSTMModel(vocab_size=10000)
+    model.get_model().summary()

@@ -54,7 +54,7 @@ def get_diverse_categories():
                 "The tube light in the corridor is flickering constantly.",
                 "Switchboard is loose and wires are exposed near {location}."
             ],
-            "labels": ["High", "Critical", "Medium", "High", "Medium", "Low", "Critical"]
+            "labels": ["High", "High", "Medium", "High", "Medium", "Low", "High"]
         },
         "food_mess": {
             "templates": [
@@ -66,7 +66,7 @@ def get_diverse_categories():
                 "The drinking water cooler in {location} is dispensing muddy water.",
                 "Mess staff not wearing hairnets or gloves."
             ],
-            "labels": ["High", "Critical", "Medium", "High", "Medium", "Critical", "Medium"]
+            "labels": ["High", "High", "Medium", "High", "Medium", "High", "Medium"]
         },
         "cleaning_hygiene": {
             "templates": [
@@ -78,7 +78,7 @@ def get_diverse_categories():
                 "No toilet paper or handwash in the common bathroom.",
                 "Black mold growing on the ceiling of shower stall 2."
             ],
-            "labels": ["High", "Low", "Medium", "Critical", "Medium", "Medium", "High"]
+            "labels": ["High", "Low", "Medium", "High", "Medium", "Medium", "High"]
         },
         "injury_safety": {
             "templates": [
@@ -90,7 +90,7 @@ def get_diverse_categories():
                 "The balcony railing in {location} is very loose, totally unsafe.",
                 "A stray dog entered {location} and is acting aggressive."
             ],
-            "labels": ["Critical", "Critical", "High", "High", "Critical", "Critical", "High"]
+            "labels": ["High", "High", "High", "High", "High", "High", "High"]
         },
         "maintenance_infrastructure": {
             "templates": [
@@ -102,7 +102,7 @@ def get_diverse_categories():
                 "Ceiling is leaking water onto my bed in room {room}.",
                 "The door handle to room {room} fell off."
             ],
-            "labels": ["Medium", "Medium", "High", "Critical", "Low", "Critical", "Medium"]
+            "labels": ["Medium", "Medium", "High", "High", "Low", "High", "Medium"]
         },
         "internet_wifi": {
             "templates": [
@@ -157,7 +157,7 @@ def generate_complaints(num_samples=2000):
         # Simulate human inconsistency (10% chance to over/under react)
         label = base_label
         if random.random() < 0.1:
-            label = random.choice(["Low", "Medium", "High", "Critical"])
+            label = random.choice(["Low", "Medium", "High"])
             
         # Fill in template vars
         raw_text = template.format(

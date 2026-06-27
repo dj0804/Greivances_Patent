@@ -27,6 +27,8 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import to_categorical
 import pickle
+from sklearn.preprocessing import LabelEncoder
+from sklearn.utils.class_weight import compute_class_weight
 
 def load_data(data_path: Path):
     """Load and prepare training data."""
@@ -37,38 +39,34 @@ def load_data(data_path: Path):
         data = json.load(f)
         
     texts = []
-    labels = []
-    
-    # We only have 3 classes in MODEL_CONFIG["num_classes"] = 3
-    # Our data has: Low, Medium, High, Critical
-    # So we map Critical -> High for now to fit the 3-class schema
-    # Or, we can map Low -> 0, Medium -> 1, High/Critical -> 2
-    label_map = {
-        "Low": 0,
-        "Medium": 1,
-        "High": 2,
-        "Critical": 2
-    }
-    
+    label_strings = []
+
     for item in data:
         texts.append(item["text"])
-        labels.append(label_map[item["label"]])
-        
+        raw = item["label"]
+        # Normalise any legacy "Critical" to "High"
+        label_strings.append("High" if raw == "Critical" else raw)
+
     logger.info(f"Loaded {len(texts)} samples")
-    
+
+    # Fit a LabelEncoder so inference can invert integer predictions
+    label_encoder = LabelEncoder()
+    label_encoder.fit(["Low", "Medium", "High"])
+    int_labels = label_encoder.transform(label_strings)
+
     # Tokenization
     tokenizer = Tokenizer(num_words=PREPROCESSING_CONFIG["max_vocab_size"], oov_token="<OOV>")
     tokenizer.fit_on_texts(texts)
-    
+
     sequences = tokenizer.texts_to_sequences(texts)
-    
+
     # Padding
     X = pad_sequences(sequences, maxlen=MODEL_CONFIG["max_sequence_length"], padding='post', truncating='post')
-    
+
     # One-hot encode labels
-    y = to_categorical(labels, num_classes=MODEL_CONFIG["num_classes"])
-    
-    return X, y, tokenizer
+    y = to_categorical(int_labels, num_classes=MODEL_CONFIG["num_classes"])
+
+    return X, y, tokenizer, label_encoder, int_labels
 
 
 def main():
@@ -96,8 +94,8 @@ def main():
         # Fallback if a directory was passed instead of file
         data_file = data_file / "mock_training_data.json"
         
-    X, y, tokenizer = load_data(data_file)
-    
+    X, y, tokenizer, label_encoder, int_labels = load_data(data_file)
+
     # Save the fitted tokenizer so it can be used during inference
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -106,14 +104,29 @@ def main():
         pickle.dump(tokenizer, f)
     logger.info(f"Fitted vocabulary size: {len(tokenizer.word_index)} words")
     logger.info(f"Saved tokenizer to {tokenizer_path}")
-    
+    print(f"Saved tokenizer to {tokenizer_path}")
+
+    # Save the fitted label encoder
+    label_encoder_path = output_dir / "label_encoder.pkl"
+    with open(label_encoder_path, 'wb') as f:
+        pickle.dump(label_encoder, f)
+    logger.info(f"Saved label encoder to {label_encoder_path}")
+    print(f"Saved label encoder to {label_encoder_path}")
+
+    # Compute class weights from full integer label array
+    import numpy as np
+    classes = np.unique(int_labels)
+    weights = compute_class_weight(class_weight="balanced", classes=classes, y=int_labels)
+    class_weight_dict = {int(c): float(w) for c, w in zip(classes, weights)}
+    logger.info(f"Class weights: {class_weight_dict}")
+
     # Split data
     X_train, X_val, y_train, y_val = train_test_split(
         X, y,
         test_size=TRAINING_CONFIG["validation_split"],
         random_state=42
     )
-    
+
     logger.info(f"Training samples: {len(X_train)}, Validation samples: {len(X_val)}")
     
     # Create model
@@ -151,7 +164,8 @@ def main():
         y_val=y_val,
         batch_size=args.batch_size,
         epochs=args.epochs,
-        patience=TRAINING_CONFIG["early_stopping_patience"]
+        patience=TRAINING_CONFIG["early_stopping_patience"],
+        class_weight=class_weight_dict,
     )
     
     # Save final model
