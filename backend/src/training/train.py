@@ -2,6 +2,7 @@
 Model training pipeline.
 """
 
+import pickle
 from tensorflow import keras
 from tensorflow.keras.callbacks import (
     EarlyStopping,
@@ -131,6 +132,14 @@ class ModelTrainer:
         
         return callbacks
     
+    def save_tokenizer(self, tokenizer, filepath: Path) -> None:
+        """Serialize tokenizer to pickle file."""
+        filepath = Path(filepath)
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, 'wb') as f:
+            pickle.dump(tokenizer, f)
+        print(f"Tokenizer saved to {filepath}")
+
     def save_model(self, filepath: Path):
         """Save the trained model."""
         self.model.save(filepath)

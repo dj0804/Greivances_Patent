@@ -2,6 +2,7 @@
 Vector database interface for storing and retrieving embeddings.
 """
 
+import time
 import numpy as np
 from typing import List, Dict, Tuple, Optional
 import pickle
@@ -104,6 +105,37 @@ class VectorStore:
         
         return results
     
+    def assign_cluster(self, embedding: np.ndarray, threshold: float = 0.75) -> str:
+        """
+        Assign a cluster id to the given embedding via nearest-neighbor lookup.
+
+        Returns the existing cluster_id when cosine similarity >= threshold,
+        otherwise mints a new cluster id.
+        """
+        if self.index.ntotal == 0:
+            return f"cluster_auto_{int(time.time())}"
+
+        query_2d = np.array([embedding], dtype=np.float32)
+        faiss.normalize_L2(query_2d)
+
+        similarities, indices = self.index.search(query_2d, 1)
+        top_idx = int(indices[0][0])
+        top_sim = float(similarities[0][0])
+
+        if top_idx != -1 and top_sim >= threshold:
+            neighbor_meta = self.metadata[top_idx]
+            return str(neighbor_meta.get("cluster_id", self.ids[top_idx]))
+
+        return f"cluster_auto_{int(time.time())}"
+
+    def get_embedding_for_text(self, text: str) -> Optional[np.ndarray]:
+        """Encode text using the store's SBERT model if available."""
+        sbert = getattr(self, "sbert_model", None) or getattr(self, "model", None)
+        if sbert is None:
+            return None
+        embedding = sbert.encode(text)
+        return np.array(embedding, dtype=np.float32)
+
     def save(self, path: Path) -> None:
         """Save vector store to disk."""
         # Save FAISS index

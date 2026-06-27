@@ -26,6 +26,18 @@ from src.config import MODELS_DIR, FASTTEXT_MODEL_PATH
 from src.summarization.summarizer import summarizer_instance
 from scripts.database_manager import HostelDB
 
+try:
+    from decision_engine.engine.orchestrator import DecisionEngineOrchestrator
+    from decision_engine.services.data_interface import Complaint as EngineComplaint
+except ImportError:
+    DecisionEngineOrchestrator = None
+    EngineComplaint = None
+    logger_import = __import__("logging").getLogger(__name__)
+    logger_import.warning(
+        "New DecisionEngineOrchestrator could not be imported; "
+        "cluster-level processing will be skipped."
+    )
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,6 +47,16 @@ logger = logging.getLogger(__name__)
 predictor = None
 decision_engine = UrgencyDecisionEngine()
 recent_predictions = deque(maxlen=200)
+
+try:
+    orchestrator = DecisionEngineOrchestrator() if DecisionEngineOrchestrator is not None else None
+except Exception as _orch_exc:
+    orchestrator = None
+    logging.getLogger(__name__).warning(
+        "Failed to initialize DecisionEngineOrchestrator: %s", _orch_exc
+    )
+
+vector_store = None
 
 # Env toggle for safe rollout and temporary fallback mode.
 DB_PERSISTENCE_ENABLED = os.getenv("ENABLE_DB_PERSISTENCE", "true").strip().lower() in {
@@ -162,6 +184,44 @@ def _persist_batch_to_db(incidents: List[dict]) -> None:
         logger.exception("Failed to persist complaint batch to DB: %s", exc)
 
 
+def load_vector_store():
+    """Lazily load the FAISS vector store from disk."""
+    global vector_store
+    if vector_store is not None:
+        return vector_store
+    import pickle as _pickle
+    vs_path = MODELS_DIR / "vector_store.pkl"
+    if not vs_path.exists():
+        logger.warning("Vector store not found at %s; cluster assignment disabled.", vs_path)
+        return None
+    try:
+        with open(vs_path, "rb") as f:
+            vector_store = _pickle.load(f)
+    except Exception as exc:
+        logger.warning("Failed to load vector store: %s", exc)
+    return vector_store
+
+
+def build_engine_complaint(
+    complaint_id: str,
+    text: str,
+    urgency_score: float,
+    timestamp,
+    cluster_id: str = "default",
+) -> "EngineComplaint":
+    """Construct an EngineComplaint for the new orchestrator."""
+    from datetime import datetime, timezone
+    ts = timestamp if isinstance(timestamp, datetime) else datetime.now(timezone.utc)
+    return EngineComplaint(
+        complaint_id=complaint_id,
+        cluster_id=cluster_id,
+        urgency_score=max(0.0, min(1.0, float(urgency_score))),
+        timeline_score=0.5,
+        timestamp=ts,
+        text=text,
+    )
+
+
 def get_predictor():
     """Lazy load predictor."""
     global predictor
@@ -186,9 +246,11 @@ def get_predictor():
                 logger = logging.getLogger(__name__)
                 logger.warning(f"FastText model not found at {FASTTEXT_MODEL_PATH}. Continuing without semantic embeddings.")
         
+        tokenizer_pkl = MODELS_DIR / "tokenizer.pkl"
         predictor = GrievancePredictor(
             model_path=model_path,
-            fasttext_model_path=fasttext_path
+            fasttext_model_path=fasttext_path,
+            tokenizer_path=tokenizer_pkl if tokenizer_pkl.exists() else None,
         )
     return predictor
 
@@ -229,6 +291,18 @@ async def predict_urgency(request: ComplaintRequest):
         # Wait for summary to finish
         summary = await summary_future
         
+        # Online cluster assignment via FAISS vector store
+        assigned_cluster_id = None
+        try:
+            vs = load_vector_store()
+            if vs is not None:
+                emb = vs.get_embedding_for_text(request.complaint_text)
+                if emb is not None:
+                    assigned_cluster_id = vs.assign_cluster(emb)
+        except Exception as _vs_err:
+            logger.warning("Cluster assignment failed: %s", _vs_err)
+        result["cluster_id"] = assigned_cluster_id
+
         # Apply decision engine
         decision = decision_engine.make_decision(
             model_prediction=result,
@@ -239,6 +313,25 @@ async def predict_urgency(request: ComplaintRequest):
         result['urgency_level'] = decision['urgency_level']
         result['confidence'] = decision['confidence']
         result['summary'] = summary
+
+        # Augment with new orchestrator breakdown (additive — does not replace existing details)
+        if orchestrator is not None and EngineComplaint is not None:
+            try:
+                cluster_id = assigned_cluster_id or result.get("cluster_id") or "singleton"
+                engine_complaint = build_engine_complaint(
+                    complaint_id=_next_complaint_id(),
+                    text=request.complaint_text,
+                    urgency_score=result["confidence"],
+                    timestamp=request.timestamp,
+                    cluster_id=cluster_id,
+                )
+                orch_results = orchestrator.process_complaints([engine_complaint])
+                if orch_results:
+                    top = orch_results[0]
+                    result["decision_details"]["orchestrator_breakdown"] = top.breakdown.model_dump()
+            except Exception as _orch_err:
+                logger.warning("Orchestrator processing failed: %s", _orch_err)
+
         stored_record = _store_prediction(request, result)
         _persist_single_to_db(request, result, stored_record)
         
@@ -254,6 +347,41 @@ async def predict_urgency(request: ComplaintRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_single_complaint(complaint: ComplaintRequest, pred, loop) -> tuple:
+    """
+    Process one complaint end-to-end and return (UrgencyPrediction, db_incident_dict).
+    Each call operates on its own local variables — no shared mutable state.
+    """
+    summary_future = loop.run_in_executor(
+        None, summarizer_instance.summarize, complaint.complaint_text
+    )
+
+    result = pred.predict(
+        complaint_text=complaint.complaint_text,
+        timestamp=complaint.timestamp,
+        hostel_id=complaint.hostel_id,
+        complaint_type=complaint.complaint_type,
+        return_probabilities=True,
+    )
+
+    summary = await summary_future
+
+    decision = decision_engine.make_decision(
+        model_prediction=result,
+        temporal_features=result.get("temporal_features"),
+    )
+
+    result["decision_details"] = decision
+    result["urgency_level"] = decision["urgency_level"]
+    result["confidence"] = decision["confidence"]
+    result["summary"] = summary
+
+    stored_record = _store_prediction(complaint, result)
+    db_incident = _build_db_incident_payload(complaint, result, stored_record)
+
+    return UrgencyPrediction(**result), db_incident
+
+
 @router.post(
     "/predict/batch",
     response_model=BatchPredictionResponse,
@@ -262,59 +390,31 @@ async def predict_urgency(request: ComplaintRequest):
 )
 async def predict_batch(request: ComplaintBatchRequest):
     """
-    Predict urgency for multiple complaints in batch.
+    Predict urgency for multiple complaints in batch (parallelised).
     """
     try:
         start_time = time.time()
-        
-        # Get predictor
+
         pred = get_predictor()
-        
-        results = []
-        batch_incidents = []
-        for complaint in request.complaints:
-            # Prepare tasks for parallel execution
-            loop = asyncio.get_event_loop()
-            summary_future = loop.run_in_executor(None, summarizer_instance.summarize, complaint.complaint_text)
-            
-            result = pred.predict(
-                complaint_text=complaint.complaint_text,
-                timestamp=complaint.timestamp,
-                hostel_id=complaint.hostel_id,
-                complaint_type=complaint.complaint_type,
-                return_probabilities=True
-            )
-            
-            summary = await summary_future
-            
-            # Apply decision engine
-            decision = decision_engine.make_decision(
-                model_prediction=result,
-                temporal_features=result.get('temporal_features')
-            )
-            
-            result['decision_details'] = decision
-            result['urgency_level'] = decision['urgency_level']
-            result['confidence'] = decision['confidence']
-            result['summary'] = summary
-            stored_record = _store_prediction(complaint, result)
-            batch_incidents.append(
-                _build_db_incident_payload(complaint, result, stored_record)
-            )
-            
-            results.append(UrgencyPrediction(**result))
+        loop = asyncio.get_event_loop()
+
+        tasks = [process_single_complaint(c, pred, loop) for c in request.complaints]
+        task_results = await asyncio.gather(*tasks)
+
+        results = [r[0] for r in task_results]
+        batch_incidents = [r[1] for r in task_results]
 
         _persist_batch_to_db(batch_incidents)
-        
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         return BatchPredictionResponse(
             success=True,
             data=results,
             count=len(results),
-            processing_time_ms=processing_time
+            processing_time_ms=processing_time,
         )
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -339,18 +439,31 @@ async def get_stats():
     }
 
 
+def _get_all_predictions_for_dashboard() -> list:
+    """Return all predictions for dashboard analytics, preferring DB over in-memory deque."""
+    if db_manager is not None:
+        try:
+            rows = db_manager.get_recent_incidents(limit=200)
+            if rows:
+                return rows
+        except Exception as exc:
+            logger.warning("DB dashboard fetch failed, falling back to deque: %s", exc)
+    return list(recent_predictions)
+
+
 @router.get(
     "/dashboard",
     tags=["Information"],
     summary="Get dashboard-ready analytics and recent complaints"
 )
 async def get_dashboard_data():
-    urgency_counter = Counter(item["urgency"].lower() for item in recent_predictions)
-    total_active = len(recent_predictions)
+    all_predictions = _get_all_predictions_for_dashboard()
+    urgency_counter = Counter(item["urgency"].lower() for item in all_predictions)
+    total_active = len(all_predictions)
     critical = urgency_counter.get("high", 0)
-    sla_overdue = sum(1 for item in recent_predictions if item.get("sla_breach"))
+    sla_overdue = sum(1 for item in all_predictions if item.get("sla_breach"))
 
-    cluster_counter = Counter(str(item.get("cluster") or "N/A") for item in recent_predictions)
+    cluster_counter = Counter(str(item.get("cluster") or "N/A") for item in all_predictions)
     cluster_distribution = [
         {"name": f"Cluster {cluster}", "count": count}
         for cluster, count in cluster_counter.most_common(6)
@@ -361,7 +474,7 @@ async def get_dashboard_data():
     for days_ago in range(4, -1, -1):
         day = today - timedelta(days=days_ago)
         day_items = [
-            item for item in recent_predictions
+            item for item in all_predictions
             if _to_datetime(item["created_at"]).date() == day
         ]
         day_counter = Counter(item["urgency"].lower() for item in day_items)
@@ -373,7 +486,7 @@ async def get_dashboard_data():
         })
 
     recent = []
-    for item in list(recent_predictions)[:20]:
+    for item in all_predictions[:20]:
         recent.append({
             "id": item["id"],
             "text": item.get("text"),
