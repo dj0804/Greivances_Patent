@@ -241,7 +241,8 @@ hostel-patent/
 │   └── reports/                       # Inference predictions, cluster analysis
 │
 ├── scripts/                           # Reproducible execution scripts
-│   ├── train_model.py                 # Model training pipeline
+│   ├── train_model.py                 # Model training pipeline (JSON/CSV)
+│   ├── evaluate_model.py              # Standalone evaluation + metrics report
 │   ├── build_embeddings.py            # Vector database construction
 │   └── run_inference.py               # Batch/single inference
 │
@@ -401,9 +402,24 @@ BACKEND_PORT=8100 FRONTEND_PORT=3100 ./run_dev.sh
 
 ### 1. Prepare Training Data
 
-Place complaint data in `data/raw/complaints/` (supports `.txt`, `.csv`, `.json`):
+The default training corpus is **`support_ticket_train.csv`** at the repository
+root — a leakage-free, class-balanced dataset (4,000 train / 1,000 test rows,
+33/33/33 across `Low`/`Medium`/`High`). The training script auto-detects file
+format by extension, so both CSV and JSON are supported.
 
-**Example format** (`data/raw/complaints/batch_001.json`):
+**CSV format** (default — `support_ticket_train.csv`):
+
+| Column | Required | Notes |
+|--------|----------|-------|
+| `Query_Text` | ✅ | Complaint / ticket text |
+| `Priority_Label` | ✅ | One of `Low`, `Medium`, `High` |
+| `Department` | optional | Read but not used for training (e.g. per-category reporting) |
+| `Query_ID` | optional | Row identifier |
+
+The column mapper also accepts `text`/`label` and `Student_Query`/`urgency`
+aliases, so most complaint CSVs work without renaming.
+
+**JSON format** (still supported — list of objects):
 ```json
 [
   {
@@ -425,22 +441,46 @@ Place complaint data in `data/raw/complaints/` (supports `.txt`, `.csv`, `.json`
 
 ### 2. Train the Model
 
+Training uses `support_ticket_train.csv` by default, so `--data` is optional:
+
 ```bash
+# Uses the default support_ticket_train.csv corpus
+python scripts/train_model.py
+
+# Or point at any JSON/CSV file explicitly
 python scripts/train_model.py \
-    --data data/raw/complaints/batch_001.json \
+    --data path/to/data.csv \
     --model-type cnn_bilstm \
-    --embedding-path data/external/cc.en.300.bin \
     --epochs 50 \
     --batch-size 32 \
     --output outputs/models/
 ```
 
-**Output**:
-- `outputs/models/cnn_bilstm_best.h5` (trained weights)
-- `outputs/models/tokenizer.pkl` (fitted tokenizer)
-- `outputs/logs/training_history.csv` (metrics)
+The trainer fits a Keras tokenizer + label encoder, applies **balanced class
+weights**, and runs an internal train/validation split.
 
-**Training takes ~30-60 minutes** (5000 samples, GPU recommended).
+**Output**:
+- `outputs/models/best_model.h5` (trained weights)
+- `outputs/models/tokenizer.pkl` (fitted tokenizer — required for inference)
+- `outputs/models/label_encoder.pkl` (fitted label encoder)
+
+**Training takes ~30-60 minutes** (GPU recommended).
+
+### 2b. Evaluate the Model
+
+Evaluate against the dedicated held-out test set. Use `--full` so the entire
+test file is scored (the data is already split, so no internal slicing):
+
+```bash
+python scripts/evaluate_model.py \
+    --model outputs/models/best_model.h5 \
+    --tokenizer outputs/models/tokenizer.pkl \
+    --data support_ticket_test.csv --full \
+    --output outputs/reports/evaluation_report.json
+```
+
+Reports overall accuracy, macro-F1, per-class precision/recall/F1, and a
+confusion matrix (printed and saved as JSON).
 
 ### 3. Build Embedding Database
 
