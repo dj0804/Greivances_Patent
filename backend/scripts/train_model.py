@@ -30,18 +30,64 @@ import pickle
 from sklearn.preprocessing import LabelEncoder
 from sklearn.utils.class_weight import compute_class_weight
 
+# Default training corpus: leakage-free support-ticket CSV at the project root.
+# (scripts/ -> backend/ -> project root)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_TRAIN_DATA = PROJECT_ROOT / "support_ticket_train.csv"
+
+
+def _read_records(data_path: Path):
+    """
+    Read records from a JSON or CSV file into a list of {'text', 'label'} dicts.
+
+    JSON: list of dicts with 'text' and 'label' keys (mock_training_data format).
+    CSV : auto-maps common column names, e.g. Query_Text/Priority_Label
+          (support_ticket format) or Student_Query/Priority_Label.
+    """
+    import csv
+
+    suffix = Path(data_path).suffix.lower()
+    records = []
+
+    if suffix == ".csv":
+        # utf-8-sig strips any BOM that prefixes the header row
+        with open(data_path, newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            cols = reader.fieldnames or []
+            text_col = next(
+                (c for c in ("Query_Text", "text", "Student_Query", "complaint_text") if c in cols),
+                None,
+            )
+            label_col = next(
+                (c for c in ("Priority_Label", "label", "urgency", "Priority") if c in cols),
+                None,
+            )
+            if text_col is None or label_col is None:
+                raise ValueError(
+                    f"CSV missing recognizable text/label columns; found columns: {cols}"
+                )
+            for row in reader:
+                records.append({"text": row[text_col], "label": row[label_col]})
+    else:
+        with open(data_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for item in data:
+            records.append({"text": item["text"], "label": item["label"]})
+
+    return records
+
+
 def load_data(data_path: Path):
-    """Load and prepare training data."""
+    """Load and prepare training data (accepts JSON or CSV)."""
     logger = setup_logger("train_model")
     logger.info(f"Loading data from {data_path}")
-    
-    with open(data_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-        
+
+    records = _read_records(data_path)
+
     texts = []
     label_strings = []
 
-    for item in data:
+    for item in records:
         texts.append(item["text"])
         raw = item["label"]
         # Normalise any legacy "Critical" to "High"
@@ -71,7 +117,12 @@ def load_data(data_path: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Train urgency classification model")
-    parser.add_argument("--data", type=str, required=True, help="Path to processed data")
+    parser.add_argument(
+        "--data",
+        type=str,
+        default=str(DEFAULT_TRAIN_DATA),
+        help=f"Path to training data (JSON or CSV). Default: {DEFAULT_TRAIN_DATA}",
+    )
     parser.add_argument(
         "--model-type",
         type=str,
@@ -91,9 +142,19 @@ def main():
     # Load data
     data_file = Path(args.data)
     if data_file.is_dir():
-        # Fallback if a directory was passed instead of file
-        data_file = data_file / "mock_training_data.json"
-        
+        # A directory was passed: prefer the default CSV corpus, else legacy mock JSON
+        if (data_file / "support_ticket_train.csv").exists():
+            data_file = data_file / "support_ticket_train.csv"
+        else:
+            data_file = data_file / "mock_training_data.json"
+
+    if not data_file.exists():
+        raise FileNotFoundError(
+            f"Training data not found at {data_file}. "
+            f"Pass --data <path> or place support_ticket_train.csv at {PROJECT_ROOT}."
+        )
+
+    logger.info(f"Using training data: {data_file}")
     X, y, tokenizer, label_encoder, int_labels = load_data(data_file)
 
     # Save the fitted tokenizer so it can be used during inference
